@@ -1,0 +1,5 @@
+# Ignore these
+/.vscode
+additional.h
+temp.cpp
+tempCodeRunnerFile.cpp
