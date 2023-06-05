@@ -22,6 +22,8 @@ TASKS:
 #include <filesystem>
 #include <regex>
 #include <iomanip> // Untuk menggunakan setw()
+#include <cstring>
+#include "additional.h"
 
 using namespace std;
 namespace fs = filesystem;
@@ -33,9 +35,18 @@ namespace fs = filesystem;
 #define CLEAR_SCREEN "clear" // linux
 #endif
 
+// VARIABEL YANG DIGUNAKAN UNTUK MEMBUAT GRAF DAN LAINNYA
+const int MAX_TITLE_LENGTH = 50;
+const int MAX_CATEGORY_LENGTH = 50;
+const int MAX_ADJACENCYLIST_LENGTH = 50;
+const int MAX_HISTORYQUIZ_LENGTH = 50;
+const int MAX_SCORE_LENGTH = 50;
+
+// VARIABEL UNTUK DATA USER
 int restartapp;
 int loggedRole;
 string username;
+string nama;
 
 struct User
 {
@@ -73,6 +84,15 @@ struct Tampilan
     int jumlahPembatas;
 };
 Tampilan tampilan;
+
+struct Riwayat
+{
+    string judul;
+    string kategori;
+    string nama;
+    string skor;
+};
+Riwayat riwayat;
 
 const int JUMLAH_MAX_PERTANYAAN = 100;
 
@@ -166,6 +186,326 @@ string center(string input, int width = 113) // agar text menjadi ke tengah dari
     return string((width - input.length()) / 2, ' ') + input;
 }
 
+// QUIZ UNTUk MENAMPUNG DATA KUIS YANG AKAN DIGUNAKAN DI RIWAYAT KUIS
+struct Quiz
+{
+    string title;
+    string category;
+    string score;
+
+    Quiz(const string &t, const string &c, const string &s)
+    {
+        title = t;
+        category = c;
+        score = s;
+    }
+};
+
+// BIKIN NODE-NYA
+struct Node
+{
+    string name;
+    Quiz *history[MAX_HISTORYQUIZ_LENGTH];
+    int quizCount;
+
+    Node(const string &n)
+    {
+        name = n;
+        quizCount = 0;
+    }
+
+    void addQuiz(Quiz *quiz)
+    {
+        if (quizCount < MAX_HISTORYQUIZ_LENGTH)
+        {
+            history[quizCount++] = quiz;
+        }
+    }
+};
+
+// GRAPH UNTUK RIWAYAT
+struct Graph
+{
+    int numVertices;
+    Node *adjacencyList[MAX_ADJACENCYLIST_LENGTH];
+    string titles[MAX_TITLE_LENGTH];
+    string categories[MAX_CATEGORY_LENGTH];
+
+    Graph(int vertices)
+    {
+        numVertices = vertices;
+        for (int i = 0; i < numVertices; i++)
+        {
+            adjacencyList[i] = nullptr;
+        }
+    }
+
+    void saveUserData()
+    {
+        ofstream file("./riwayat/data-user.csv");
+
+        if (file.is_open())
+        {
+            for (int i = 0; i < numVertices; i++)
+            {
+                if (adjacencyList[i] != nullptr)
+                {
+                    string personName = adjacencyList[i]->name;
+                    file << personName << endl;
+                }
+            }
+
+            file.close();
+            cout << "Data pengguna berhasil disimpan ke file: data-user.csv" << endl;
+        }
+        else
+        {
+            cout << "Gagal membuka file: data-user.csv" << endl;
+        }
+    }
+
+    void saveQuizData()
+    {
+        ofstream file("./riwayat/data-kuis.csv");
+
+        if (file.is_open())
+        {
+            for (int i = 0; i < MAX_CATEGORY_LENGTH; i++)
+            {
+                if (!titles[i].empty())
+                {
+                    file << titles[i] << ",";
+                    file << categories[i] << endl;
+                }
+            }
+
+            // file << title << ",";
+            // file << category << endl;
+
+            file.close();
+            cout << "Data kuis berhasil disimpan ke file: data-kuis.csv" << endl;
+        }
+        else
+        {
+            cout << "Gagal membuka file: data-kuis.csv" << endl;
+        }
+    }
+
+    void saveQuizHistoryData()
+    {
+        ofstream file("./riwayat/riwayat.csv");
+
+        if (file.is_open())
+        {
+            for (int i = 0; i < numVertices; i++)
+            {
+                if (adjacencyList[i] != nullptr)
+                {
+                    string personName = adjacencyList[i]->name;
+
+                    for (int j = 0; j < adjacencyList[i]->quizCount; j++)
+                    {
+                        Quiz *quiz = adjacencyList[i]->history[j];
+                        file << personName << ",";
+                        file << quiz->title << ",";
+                        file << quiz->score << endl;
+                    }
+                }
+            }
+            // file << personName << ",";
+            // file << title << ",";
+            // file << score << endl;
+
+            file.close();
+            cout << "Data riwayat kuis berhasil disimpan ke file: riwayat.csv" << endl;
+        }
+        else
+        {
+            cout << "Gagal membuka file: riwayat.csv" << endl;
+        }
+    }
+
+    void addPersonFromFile()
+    {
+        ifstream file("./riwayat/data-user.csv");
+
+        if (file.is_open())
+        {
+            string name;
+            while (getline(file, name))
+            {
+                addPerson(name);
+            }
+
+            file.close();
+            cout << "Data pengguna berhasil ditambahkan dari file: data-user.csv" << endl;
+        }
+        else
+        {
+            cout << "Gagal membuka file: data-user.csv" << endl;
+        }
+    }
+
+    void addQuizFromFile()
+    {
+        ifstream file("./riwayat/data-kuis.csv");
+
+        if (file.is_open())
+        {
+            string title, category;
+            while (getline(file, title, ',') && getline(file, category))
+            {
+                addQuiz(title, category);
+            }
+
+            file.close();
+            cout << "Data kuis berhasil ditambahkan dari file: data-kuis.csv" << endl;
+        }
+        else
+        {
+            cout << "Gagal membuka file: data-kuis.csv" << endl;
+        }
+    }
+
+    void addQuizHistoryFromFile()
+    {
+        ifstream file("./riwayat/riwayat.csv");
+
+        if (file.is_open())
+        {
+            string personName, quizTitle, score;
+            while (getline(file, personName, ',') && getline(file, quizTitle, ',') && getline(file, score))
+            {
+                addQuizHistory(personName, quizTitle, score);
+            }
+
+            file.close();
+            cout << "Data riwayat kuis berhasil ditambahkan dari file: riwayat.csv" << endl;
+        }
+        else
+        {
+            cout << "Gagal membuka file: riwayat.csv" << endl;
+        }
+    }
+
+    void addPerson(const string &name)
+    {
+        for (int i = 0; i < numVertices; i++)
+        {
+            if (adjacencyList[i] == nullptr)
+            {
+                Node *node = new Node(name);
+                adjacencyList[i] = node;
+                break;
+            }
+        }
+    }
+
+    void addQuiz(const string &title, const string &category)
+    {
+        for (int i = 0; i < MAX_TITLE_LENGTH; i++)
+        {
+            if (titles[i].empty())
+            {
+                titles[i] = title;
+                categories[i] = category;
+                break;
+            }
+        }
+    }
+
+    void addQuizHistory(const string &personName, const string &quizTitle, const string &score)
+    {
+        int personIndex = -1;
+        int quizIndex = -1;
+
+        for (int i = 0; i < numVertices; i++)
+        {
+            if (adjacencyList[i] != nullptr && adjacencyList[i]->name == personName)
+            {
+                personIndex = i;
+                break;
+            }
+        }
+
+        for (int i = 0; i < MAX_TITLE_LENGTH; i++)
+        {
+            if (titles[i] == quizTitle)
+            {
+                quizIndex = i;
+                break;
+            }
+        }
+
+        if (personIndex != -1 && quizIndex != -1)
+        {
+            Quiz *quiz = new Quiz(titles[quizIndex], categories[quizIndex], score);
+
+            // Memastikan indeks kuis tidak melebihi batas
+            if (adjacencyList[personIndex]->quizCount < MAX_HISTORYQUIZ_LENGTH)
+            {
+                adjacencyList[personIndex]->addQuiz(quiz);
+            }
+            else
+            {
+                cout << "Riwayat kuis penuh untuk anda" << endl;
+            }
+        }
+        else
+        {
+            cout << "Pengguna tidak ditemukan" << endl;
+        }
+    }
+
+    void printHistory(Node *current)
+    {
+        cout << "----" << current->name << "----" << endl;
+        for (int j = 0; j < current->quizCount; j++)
+        {
+            Quiz *quiz = current->history[j];
+            cout << "Kuis: " << quiz->title << endl;
+            cout << "Kategori: " << quiz->category << endl;
+            cout << "Skor: " << quiz->score << endl;
+            cout << endl;
+        }
+    }
+
+    void printGraph(const string &name, int loggedRole)
+    {
+        bool hasHistory = false;
+
+        for (int i = 0; i < numVertices; i++)
+        {
+            Node *current = adjacencyList[i];
+            if (current != nullptr && loggedRole == 2 && current->name == name)
+            {
+                if (current->quizCount > 0)
+                {
+                    printHistory(current);
+                    hasHistory = true;
+                }
+            }
+            else if (current != nullptr && loggedRole == 1)
+            {
+                if (current->quizCount > 0)
+                {
+                    printHistory(current);
+                    hasHistory = true;
+                }
+            }
+        }
+
+        if (!hasHistory)
+        {
+            cout << "Belum ada riwayat pengerjaan kuis" << endl;
+        }
+    }
+};
+
+// INISIALISASI GRAPH UNTUK NANTI
+int numPeople = 50;
+Graph graph(numPeople);
+
 // FUNGSI AUTH FIXED
 void masukAkun()
 {
@@ -178,8 +518,20 @@ void masukAkun()
     system(CLEAR_SCREEN);
 
     banner("MASUK AKUN", "Zona Kuis - Kelompok 3", 10);
+    cout << " [X] Kembali" << endl;
+    tampilan_pembatas(tampilan.jumlahPembatas);
+
     cout << " Masukkan username : ";
     cin >> username;
+
+    if (username == "x" || username == "X")
+    {
+        username = "";
+        restartapp = 0;
+        // praMainMenu();
+        cin.get();
+        return;
+    }
 
     ifstream file("./users/" + username + ".txt");
 
@@ -192,21 +544,21 @@ void masukAkun()
             pw = line;
         }
 
-        // Melakukan iterasi hingga mencapai baris terakhir
-        int n = 0;
-        while (getline(file, line))
+        // Mengambil data nama dari baris kedua
+        if (getline(file, line))
         {
-            // Mengambil data role dari baris terakhir
-            if (n == 1)
-            {
-                role = stoi(line);
-                break;
-            }
-            n++;
+            nama = line;
+        }
+
+        // Mengambil data role dari baris ketiga
+        if (getline(file, line))
+        {
+            role = stoi(line);
         }
 
         file.close();
     }
+
     // JIKA FILE TIDAK DITEMUKAN MAKA KEMBALIKAN
     else
     {
@@ -220,7 +572,11 @@ void masukAkun()
 
     do
     {
-        cout << " Masukkan password  : ";
+        system(CLEAR_SCREEN);
+        banner("MASUK AKUN", "Zona Kuis - Kelompok 3", 10);
+
+        cout << " Masukkan username : " << username << endl;
+        cout << " Masukkan password : ";
         cin >> inputpw;
 
         if (inputpw == pw)
@@ -232,7 +588,8 @@ void masukAkun()
         {
             cout << " Password salah" << endl;
             cout << " Silahkan input kembali, anda masih memiliki " << percobaan - 1 << " kali percobaan" << endl;
-            cout << endl;
+            cout << " Tekan tombol apapun untuk lanjut..." << endl;
+            cin.get();
         }
 
         percobaan--;
@@ -403,6 +760,11 @@ void buatAkun()
                 file << user.namalengkap << endl;
                 file << user.role << endl;
                 file.close();
+
+                // NAMBAH USER PADA GRAPH
+                graph.addPerson(user.namalengkap);
+                graph.saveUserData();
+
                 cout << " Akun telah berhasil dibuat" << endl;
             }
             else
@@ -425,20 +787,24 @@ void buatAkun()
 
 void praMainMenu()
 {
-    system(CLEAR_SCREEN);
-    banner("KUIS BERBASIS DIGITAL", "Zona Kuis - Kelompok 3", 10);
-    cout << " Silahkan pilih menu:" << endl;
-    cout << " [1] Masuk akun" << endl;
-    cout << " [2] Buat akun" << endl;
-    cout << " [3] Keluar Aplikasi" << endl;
-
-    tampilan_pembatas(tampilan.jumlahPembatas);
     int pilihan;
-
     // validasi input
     bool validInput = false;
-    while (!validInput)
+
+    do
     {
+
+        system(CLEAR_SCREEN);
+        banner("KUIS BERBASIS DIGITAL", "Zona Kuis - Kelompok 3", 10);
+        cout << " Silahkan pilih menu:" << endl;
+        cout << " [1] Masuk akun" << endl;
+        cout << " [2] Buat akun" << endl;
+        cout << " [3] Keluar Aplikasi" << endl;
+
+        tampilan_pembatas(tampilan.jumlahPembatas);
+
+        // while (!validInput)
+        // {
         cout << " Pilihan: ";
         string input;
         getline(cin, input);
@@ -446,6 +812,8 @@ void praMainMenu()
         if (input.empty())
         {
             cout << " Pilihan tidak boleh kosong!" << endl;
+            cout << " Tekan tombol apapun untuk melanjutkan..." << endl;
+            cin.get();
             continue;
         }
 
@@ -469,13 +837,18 @@ void praMainMenu()
             else
             {
                 cout << " Pilihan tidak valid, silahkan pilih 1,2 atau 3!" << endl;
+                cout << " Tekan tombol apapun untuk melanjutkan..." << endl;
+                cin.get();
             }
         }
         else
         {
             cout << " Pilihan tidak valid, silahkan pilih 1,2 atau 3!" << endl;
+            cout << " Tekan tombol apapun untuk melanjutkan..." << endl;
+            cin.get();
         }
-    }
+        // }
+    } while (!validInput);
 
     if (pilihan == 1)
     {
@@ -490,9 +863,10 @@ void praMainMenu()
         system(CLEAR_SCREEN);
         banner("Terima Kasih Sudah Menggunakan Aplikasi Kami!", "Kelompok 3 - PAMIT", 0);
         cout << " App Developed By: " << endl;
-        cout << " KRISNA SANTOSA           - 2209092" << endl;
-        cout << " RAFLY IVAN KHALFANI      - 2202187" << endl;
-        cout << " RAMANDHA PUTRA SURYAHADI - 2200125" << endl;
+        cout << " AKWAN CAKRA TAJIMALELA    - 2209098" << endl;
+        cout << " KRISNA SANTOSA            - 2209092" << endl;
+        cout << " RAFLY IVAN KHALFANI       - 2202187" << endl;
+        cout << " RAMANDHA PUTRA SURYAHADI  - 2200125" << endl;
         cout << " ";
         tampilan_pembatas(tampilan.jumlahPembatas);
         cout << " Tekan tombol apapun untuk keluar..." << endl;
@@ -537,40 +911,32 @@ void riwayatPengerjaan()
     system(CLEAR_SCREEN);
     banner("Riwayat Pengerjaan", "Guru " + username, 5);
 
-    // Open the riwayat.txt file for reading
-    ifstream bacaRiwayat("./questions/riwayat.txt");
-
-    // Check if the file was opened successfully
-    if (!bacaRiwayat.is_open())
-    {
-        cout << "Belum ada riwayat pengerjaan kuis." << endl;
-        system("PAUSE");
-        return;
-    }
-
-    // Read the contents of the file and print them to the console
-    string line;
-    while (getline(bacaRiwayat, line))
-    {
-        cout << line << endl;
-    }
-
-    // Close the file
-    bacaRiwayat.close();
+    // Menampilkan graf
+    graph.printGraph(nama, loggedRole);
 
     cout << "Tekan enter untuk melanjutkan..." << endl;
     cin.get();
 
-    // if (loggedRole == 1)
+    // // Open the riwayat.txt file for reading
+    // ifstream bacaRiwayat("./questions/riwayat.txt");
+
+    // // Check if the file was opened successfully
+    // if (!bacaRiwayat.is_open())
     // {
-    //     mainMenuGuru();
+    //     cout << "Belum ada riwayat pengerjaan kuis." << endl;
+    //     system("PAUSE");
     //     return;
     // }
-    // else
+
+    // // Read the contents of the file and print them to the console
+    // string line;
+    // while (getline(bacaRiwayat, line))
     // {
-    //     mainMenuSiswa();
-    //     return;
+    //     cout << line << endl;
     // }
+
+    // // Close the file
+    // bacaRiwayat.close();
 }
 
 void exportSoalKeCSV()
@@ -617,7 +983,7 @@ void exportSoalKeCSV()
         getline(cin, input);
 
         // cek apakah kembali
-        if (input == "x")
+        if (input == "x" || input == "X")
         {
             if (loggedRole == 1)
             {
@@ -731,7 +1097,7 @@ void exportSoalKeCSV()
         getline(cin, input);
 
         // cek apakah kembali
-        if (input == "x")
+        if (input == "x" || input == "X")
         {
             if (loggedRole == 1)
             {
@@ -1011,7 +1377,7 @@ void kuisSelesai(int score = 0, string namaFile = "", string judulKuis = "")
         bool invalidInput = false;
         do
         {
-            cout << "Masukkan pilihan (Y/N): ";
+            cout << " Masukkan pilihan (Y/N): ";
             getline(cin, pil);
             if (pil.length() == 1 && (pil[0] == 'Y' || pil[0] == 'N' || pil[0] == 'y' || pil[0] == 'n'))
             {
@@ -1019,7 +1385,7 @@ void kuisSelesai(int score = 0, string namaFile = "", string judulKuis = "")
                 invalidInput = true;
                 break;
             }
-            cout << "Input tidak valid. Mohon masukkan Y atau N." << endl;
+            cout << " Input tidak valid. Mohon masukkan Y atau N." << endl;
         } while (!invalidInput);
         pilihanKirim = toupper(pilihanKirim);
 
@@ -1038,13 +1404,14 @@ void kuisSelesai(int score = 0, string namaFile = "", string judulKuis = "")
             kuisSelesai(score);
         }
 
-        ofstream riwayatFile("./questions/riwayat.txt", std::ios::app);
+        // ofstream riwayatFile("./questions/riwayat.txt", std::ios::app);
 
-        int panjangJudul = judulKuis.length();
-        string strip = string(panjangJudul, '-');
+        // int panjangJudul = judulKuis.length();
+        // string strip = string(panjangJudul, '-');
+        // string capitalizeJudul = capitalizeString(judulKuis);
 
-        riwayatFile << left << setw(judulKuis.length() + 2) << setfill('-') << "-" << judulKuis << "-" << setfill('-') << setw(judulKuis.length() + 2) << "-" << endl;
-        riwayatFile << "Nama: " << username << endl;
+        // riwayatFile << left << setw(judulKuis.length() + 2) << setfill('-') << "-" << capitalizeJudul << "-" << setfill('-') << setw(judulKuis.length() + 2) << "-" << endl;
+        // riwayatFile << "Nama: " << nama << endl;
         int skor = 0;
         for (int i = 0; i < jumlahPertanyaan; i++)
         {
@@ -1054,17 +1421,24 @@ void kuisSelesai(int score = 0, string namaFile = "", string judulKuis = "")
             }
         }
 
-        size_t lastBackslashPos = namaFile.find_last_of('\\');
-        string categoryName = namaFile.substr(lastBackslashPos + 1);
+        // size_t lastBackslashPos = namaFile.find_last_of('\\');
+        // string categoryName = namaFile.substr(lastBackslashPos + 1);
+        string finalSkor = to_string(skor) + "/" + to_string(jumlahPertanyaan);
 
-        riwayatFile << "Kategori: " << categoryName << endl;
-        riwayatFile << "Skor: " << skor << "/" << jumlahPertanyaan << endl;
-        riwayatFile << left << setw(judulKuis.length() + 2) << setfill('-') << "-" << strip << "-" << setfill('-') << setw(judulKuis.length() + 2) << "-" << endl;
-
-        riwayatFile << endl;
+        // riwayatFile << "Kategori: " << categoryName << endl;
+        // riwayatFile << "Skor: " << skor << "/" << jumlahPertanyaan << endl;
+        // riwayatFile << left << setw(judulKuis.length() + 2) << setfill('-') << "-" << strip << "-" << setfill('-') << setw(judulKuis.length() + 2) << "-" << endl;
+        // riwayatFile << endl;
 
         // mengirim jawaban
         system(CLEAR_SCREEN);
+        // MENAMBAHKAN RIWAYAT KUIS PADA GRAPH
+
+        graph.addQuizHistory(nama, judulKuis, finalSkor);
+        graph.saveQuizHistoryData();
+
+        cout << nama << " " << judulKuis << " " << finalSkor << endl;
+        system("pause");
         getScore();
 
         // inisialisasi ulang jumlah pertanyaan
@@ -1139,26 +1513,57 @@ void loadQuestionsFromFile(string namaFile)
 
 bool tampilkanPertanyaan(Pertanyaan &p, int nomorPertanyaan, bool isUbahJawaban = false)
 {
-    system(CLEAR_SCREEN);
-    cout << " Pertanyaan " << nomorPertanyaan << ": " << p.teksPertanyaan << endl;
-    cout << " A. " << p.pilihanA << endl;
-    cout << " B. " << p.pilihanB << endl;
-    cout << " C. " << p.pilihanC << endl;
-    cout << " D. " << p.pilihanD << endl;
-
-    cout << endl;
-
-    if (!isUbahJawaban)
-    {
-        cout << " Gunakan huruf 'P' untuk kembali ke pertanyaan sebelumnya" << endl;
-        cout << " Gunakan huruf 'N' untuk lanjut ke pertanyaan berikutnya" << endl;
-    }
-    tampilan_pembatas(tampilan.jumlahPembatas);
-
     string input;
     bool isValid = false;
-    while (!isValid)
+
+    do
     {
+
+        system(CLEAR_SCREEN);
+
+        if (!isUbahJawaban)
+        {
+            cout << " Nomor " << endl;
+            for (int i = 0; i < jumlahPertanyaan; i++)
+            {
+                if (nomorPertanyaan == i + 1)
+                {
+                    cout << " " << i + 1 << " | ";
+                }
+                else
+                {
+                    changeColor(8);
+                    cout << " " << i + 1;
+                    changeColor(7);
+                    cout << " | ";
+                }
+
+                if (i == 5)
+                {
+                    cout << "\n ";
+                }
+            }
+            cout << "\n\n";
+        }
+
+        cout << " Pertanyaan " << nomorPertanyaan << ": " << p.teksPertanyaan << endl;
+        cout << " A. " << p.pilihanA << endl;
+        cout << " B. " << p.pilihanB << endl;
+        cout << " C. " << p.pilihanC << endl;
+        cout << " D. " << p.pilihanD << endl;
+
+        cout << endl;
+
+        if (!isUbahJawaban)
+        {
+            cout << " Gunakan huruf 'P' untuk kembali ke pertanyaan sebelumnya" << endl;
+            cout << " Gunakan huruf 'N' untuk lanjut ke pertanyaan berikutnya" << endl;
+            cout << " Masukan nomor soal untuk cepat" << endl;
+        }
+        tampilan_pembatas(tampilan.jumlahPembatas);
+
+        // while (!isValid)
+        // {
         cout << " Jawaban Anda: ";
         getline(cin, input);
         // loop through each character of the string and convert to uppercase
@@ -1172,11 +1577,15 @@ bool tampilkanPertanyaan(Pertanyaan &p, int nomorPertanyaan, bool isUbahJawaban 
         if (input.empty())
         {
             cout << " Jawaban tidak boleh kosong! Silahkan masukkan jawaban A, B, C, atau D" << endl;
+            cout << " Tekan tombol apapun untuk melanjutkan..." << endl;
+            cin.get();
         }
         else if ((input.length() > 1 || input[0] < 'A' || input[0] > 'D') && (input[0] != 'P' && input[0] != 'N'))
 
         {
             cout << " Jawaban tidak valid! Silahkan masukkan jawaban A, B, C, atau D" << endl;
+            cout << " Tekan tombol apapun untuk melanjutkan..." << endl;
+            cin.get();
         }
         else
         {
@@ -1190,7 +1599,8 @@ bool tampilkanPertanyaan(Pertanyaan &p, int nomorPertanyaan, bool isUbahJawaban 
                 break;
             }
         }
-    }
+        // }
+    } while (!isValid);
 
     // cek apakah user ingin kembali ke pertanyaan sebelumnya
     if (p.jawabanPengguna == 'P')
@@ -1255,7 +1665,7 @@ void mainkanKuis()
         string input;
         getline(cin, input);
 
-        if (input == "x")
+        if (input == "x" || input == "X")
         {
             mainMenuSiswa();
             return;
@@ -1354,7 +1764,7 @@ void mainkanKuis()
         string input;
         getline(cin, input);
 
-        if (input == "x")
+        if (input == "x" || input == "X")
         {
             mainkanKuis();
             return;
@@ -1442,7 +1852,6 @@ void mainkanKuis()
                 cout << " Anda sudah berada di pertanyaan pertama. Tidak dapat pindah ke pertanyaan sebelumnya." << endl;
                 cout << " Tekan tombol apapun untuk melanjutkan..." << endl;
                 cin.get();
-                cin.get();
             }
         }
         else
@@ -1462,10 +1871,10 @@ void buatKuisBaru()
     system(CLEAR_SCREEN);
     banner("Buat Kuis Baru", "Kelompok 3", 10);
     // masukan nama file kemudian save di dalam folder ./questions
-    string namaFile;
+    // string namaFile;
     string judulKuis;
-    string deskripsiKuis;
     string namaKategori;
+    // string deskripsiKuis;
 
     cout << " Nama folder & file tidak boleh sama dengan file yang sudah ada" << endl;
     cout << " Jika nama file sudah ada, maka file akan ditimpa" << endl;
@@ -1476,10 +1885,10 @@ void buatKuisBaru()
     do
     {
         cout << " Masukkan nama kategori: ";
-        cin >> namaKategori;
-        cin.ignore();
+        getline(cin, namaKategori);
+        // cin.ignore();
 
-        if (namaKategori == "x")
+        if (namaKategori == "x" || namaKategori == "X")
         {
             mainMenuGuru();
             return; // Menghentikan eksekusi fungsi setelah kembali ke mainMenuGuru()
@@ -1512,47 +1921,56 @@ void buatKuisBaru()
     } while (judulKuis.empty()); // Validasi judul kuis tidak boleh kosong
 
     // Membuat namaFile dengan mengganti spasi atau karakter yang tidak sesuai dengan penamaan file dengan "-"
-    for (char c : judulKuis)
-    {
-        if (isalnum(c))
-        {
-            namaFile += c;
-        }
-        else if (isspace(c))
-        {
-            namaFile += "-";
-        }
-    }
-    transform(namaFile.begin(), namaFile.end(), namaFile.begin(), ::tolower); // Mengubah semua huruf menjadi lowercase
+    // for (char c : judulKuis)
+    // {
+    //     if (isalnum(c))
+    //     {
+    //         namaFile += c;
+    //     }
+    //     else if (isspace(c))
+    //     {
+    //         namaFile += "-";
+    //     }
+    // }
+    // transform(namaFile.begin(), namaFile.end(), namaFile.begin(), ::tolower); // Mengubah semua huruf menjadi lowercase
 
-    cout << " Masukkan deskripsi: " << endl;
-    getline(cin, deskripsiKuis);
+    // cout << " Masukkan deskripsi: ";
+    // getline(cin, deskripsiKuis);
 
-    // Jika deskripsi kosong, ganti dengan "-"
-    if (deskripsiKuis.empty())
-    {
-        deskripsiKuis = "-";
-    }
+    // // Jika deskripsi kosong, ganti dengan "-"
+    // if (deskripsiKuis.empty())
+    // {
+    //     deskripsiKuis = "-";
+    // }
 
-    while (namaFile.empty())
-    {
-        cout << " Nama file tidak boleh kosong!" << endl;
-        cout << " Masukkan nama file: ";
-        cin >> namaFile;
-        cin.ignore();
-    }
+    // while (namaFile.empty())
+    // {
+    //     cout << " Nama file tidak boleh kosong!" << endl;
+    //     cout << " Masukkan nama file: ";
+    //     cin >> namaFile;
+    //     cin.ignore();
+    // }
 
-    cout << " Nama file: " << namaFile << endl;
+    cout << " Nama file: " << judulKuis << endl;
+
+    // MENAMBAHKAN GRAPH KUIS
+    graph.addQuiz(judulKuis, namaKategori);
+    graph.saveQuizData();
 
     // buat file baru
-    ofstream file("./questions/" + namaKategori + "/" + namaFile);
+    ofstream file("./questions/" + namaKategori + "/" + judulKuis);
     // masukan pertanyaan
+
     string pertanyaan;
     char jawaban;
     string pilihanJawaban;
     char pilihan;
+
     do
     {
+        system(CLEAR_SCREEN);
+        banner(judulKuis, "Kuis Baru", 10);
+
         cout << " Masukkan pertanyaan: ";
         getline(cin, pertanyaan);
 
@@ -1613,7 +2031,6 @@ void buatKuisBaru()
         {
             file << endl;
         }
-        system(CLEAR_SCREEN);
     } while (pilihan == 'Y');
 
     file.close();
@@ -1623,9 +2040,6 @@ void mainMenuGuru()
 {
     string line;
     string namapengguna;
-
-    system(CLEAR_SCREEN);
-    banner("SELAMAT DATANG DI", "ZONA KUIS - Kelompok 3", 10);
 
     ifstream file("./users/" + username + ".txt");
 
@@ -1641,22 +2055,27 @@ void mainMenuGuru()
     }
     file.close();
 
-    cout << " Halo " << namapengguna << " mau apa hari ini?" << endl;
-    cout << " Silahkan pilih menu:" << endl;
-    cout << " [1] Buat Kuis Baru" << endl;
-    cout << " [2] Export Soal ke CSV" << endl;
-    cout << " [3] Riwayat Kuis" << endl;
-    cout << " [4] Keluar Akun" << endl;
-    cout << " [5] Keluar Aplikasi" << endl
-         << endl;
-
-    tampilan_pembatas(tampilan.jumlahPembatas);
-    int pilihan;
-
-    // validasi input
     bool validInput = false;
-    while (!validInput)
+    int pilihan;
+    do
     {
+        system(CLEAR_SCREEN);
+        banner("SELAMAT DATANG DI", "ZONA KUIS - Kelompok 3", 10);
+
+        cout << " Halo " << namapengguna << " mau apa hari ini?" << endl;
+        cout << " Silahkan pilih menu:" << endl;
+        cout << " [1] Buat Kuis Baru" << endl;
+        cout << " [2] Export Soal ke CSV" << endl;
+        cout << " [3] Riwayat Kuis" << endl;
+        cout << " [4] Keluar Akun" << endl;
+        cout << " [5] Keluar Aplikasi" << endl
+             << endl;
+
+        tampilan_pembatas(tampilan.jumlahPembatas);
+
+        // validasi input
+        // while (!validInput)
+        // {
         cout << " Pilihan: ";
         string input;
         getline(cin, input);
@@ -1664,6 +2083,8 @@ void mainMenuGuru()
         if (input.empty())
         {
             cout << " Pilihan tidak boleh kosong!" << endl;
+            cout << " Tekan tombol apapun untuk melanjutkan..." << endl;
+            cin.get();
             continue;
         }
 
@@ -1687,13 +2108,18 @@ void mainMenuGuru()
             else
             {
                 cout << " Pilihan tidak valid, silahkan pilih 1,2,3,4 atau 5!" << endl;
+                cout << " Tekan tombol apapun untuk melanjutkan..." << endl;
+                cin.get();
             }
         }
         else
         {
             cout << " Pilihan tidak valid, silahkan pilih 1,2,3,4 atau 5!" << endl;
+            cout << " Tekan tombol apapun untuk melanjutkan..." << endl;
+            cin.get();
         }
-    }
+        // }
+    } while (!validInput);
 
     if (pilihan == 1)
     {
@@ -1712,7 +2138,8 @@ void mainMenuGuru()
         cout << " Anda telah keluar dari akun guru..." << endl;
         cout << " Tekan tombol apapun untuk lanjut..." << endl;
         restartapp = 1;
-        // cin.ignore();
+        loggedRole = 0;
+        cin.get();
         praMainMenu();
         return;
     }
@@ -1747,8 +2174,7 @@ void mainMenuSiswa()
 {
     string line;
     string namapengguna;
-    system(CLEAR_SCREEN);
-    banner("SELAMAT DATANG DI", "ZONA KUIS - Kelompok 3", 10);
+
     ifstream file("./users/" + username + ".txt");
     int baris_saat_ini = 1;
     while (getline(file, line))
@@ -1762,21 +2188,26 @@ void mainMenuSiswa()
     }
     file.close();
 
-    cout << " Halo " << namapengguna << " mau apa hari ini?" << endl;
-    cout << " Silahkan pilih menu:" << endl;
-    cout << " [1] Mulai Kuis" << endl;
-    cout << " [2] Riwayat Kuis" << endl;
-    cout << " [3] Cara Mengerjakan Kuis" << endl;
-    cout << " [4] Keluar Akun" << endl;
-    cout << " [5] Keluar Aplikasi" << endl
-         << endl;
-    tampilan_pembatas(tampilan.jumlahPembatas);
     int pilihan;
-
     // validasi input
     bool validInput = false;
-    while (!validInput)
+    do
     {
+        system(CLEAR_SCREEN);
+        banner("SELAMAT DATANG DI", "ZONA KUIS - Kelompok 3", 10);
+
+        cout << " Halo " << namapengguna << " mau apa hari ini?" << endl;
+        cout << " Silahkan pilih menu:" << endl;
+        cout << " [1] Mulai Kuis" << endl;
+        cout << " [2] Riwayat Kuis" << endl;
+        cout << " [3] Cara Mengerjakan Kuis" << endl;
+        cout << " [4] Keluar Akun" << endl;
+        cout << " [5] Keluar Aplikasi" << endl
+             << endl;
+        tampilan_pembatas(tampilan.jumlahPembatas);
+
+        // while (!validInput)
+        // {
         cout << " Pilihan: ";
         string input;
         getline(cin, input);
@@ -1784,6 +2215,8 @@ void mainMenuSiswa()
         if (input.empty())
         {
             cout << " Pilihan tidak boleh kosong!" << endl;
+            cout << " Tekan tombol apapun untuk melanjutkan..." << endl;
+            cin.get();
             continue;
         }
 
@@ -1807,13 +2240,18 @@ void mainMenuSiswa()
             else
             {
                 cout << " Pilihan tidak valid, silahkan pilih 1,2,3 atau 4!" << endl;
+                cout << " Tekan tombol apapun untuk melanjutkan..." << endl;
+                cin.get();
             }
         }
         else
         {
             cout << " Pilihan tidak valid, silahkan pilih 1,2,3 atau 4!" << endl;
+            cout << " Tekan tombol apapun untuk melanjutkan..." << endl;
+            cin.get();
         }
-    }
+        // }
+    } while (!validInput);
 
     if (pilihan == 1)
     {
@@ -1837,8 +2275,9 @@ void mainMenuSiswa()
     {
         cout << " Anda telah keluar dari akun siswa..." << endl;
         cout << " Tekan tombol apapun untuk lanjut..." << endl;
+        loggedRole = 0;
         restartapp = 1;
-        // cin.ignore();
+        cin.get();
         praMainMenu();
         return;
     }
@@ -1870,6 +2309,16 @@ void mainMenuSiswa()
 
 int main()
 {
+    bool done = false;
+    if (!done)
+    {
+        graph.addPersonFromFile();
+        graph.addQuizFromFile();
+        graph.addQuizHistoryFromFile();
+
+        done = true;
+    }
+
     do
     {
         while (restartapp == 0 || restartapp == 1)

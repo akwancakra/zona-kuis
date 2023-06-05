@@ -1,5 +1,12 @@
 # Ignore these
 /.vscode
-additional.h
 temp.cpp
 tempCodeRunnerFile.cpp
+main.exe
+test.cpp
+test.exe
+test2.cpp
+test2.exe
+ZonaKuis-Final.rar
+
+.gitignore
